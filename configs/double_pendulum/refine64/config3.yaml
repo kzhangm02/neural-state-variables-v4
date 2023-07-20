@@ -1,0 +1,21 @@
+lr: 0.0001
+seed: 3
+if_cuda: True
+gamma: 0.5
+log_dir: 'logs'
+train_batch: 8
+val_batch: 8
+test_batch: 8
+num_workers: 8
+model_name: 'refine-64'
+data_filepath: '/home/kevin/data'
+dataset: 'double_pendulum'
+num_frames: 60
+lr_schedule: [15, 30, 100, 300, 600, 1000, 1500]
+lda_schedule_step_size: 2400
+lda_schedule_warmup_steps: 480
+lda_schedule_max_lda: 0.1
+lda_schedule_min_lda: 0.001
+lda_schedule_val_lda: 0.001
+num_gpus: 1
+epochs: 2000
