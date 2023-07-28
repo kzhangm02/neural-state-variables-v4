@@ -3,19 +3,18 @@ seed: 1
 if_cuda: True
 gamma: 0.5
 log_dir: 'logs'
-train_batch: 8
-val_batch: 8
+train_batch: 64
+val_batch: 64
 test_batch: 8
+gather_train_batch: 8
+gather_val_batch: 8
 num_workers: 8
 model_name: 'refine-64'
-data_filepath: '/home/kevin/data'
+data_filepath: '/data/physics_prediction_v2/data'
 dataset: 'double_pendulum'
 num_frames: 60
-lr_schedule: [15, 30, 100, 300, 600, 1000, 1500]
-lda_schedule_step_size: 2400
-lda_schedule_warmup_steps: 480
-lda_schedule_max_lda: 0.1
-lda_schedule_min_lda: 0.001
-lda_schedule_val_lda: 0.001
+lr_schedule: [20, 50, 100, 300, 600]
+lda: 100.0
+beta: 0.0
 num_gpus: 1
 epochs: 2000
