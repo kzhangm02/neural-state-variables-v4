@@ -11,14 +11,22 @@ def conv2d_bn_relu(inch,outch,kernel_size,stride=1,padding=1):
     )
     return convlayer
 
-def ffn_relu(in_dim, out_dim):
+def ffn_bn(in_dim, out_dim):
     ffnlayer = torch.nn.Sequential(
         torch.nn.Linear(in_dim, out_dim),
+        torch.nn.BatchNorm1d(out_dim),
+    )
+    return ffnlayer
+
+def ffn_bn_relu(in_dim, out_dim):
+    ffnlayer = torch.nn.Sequential(
+        torch.nn.Linear(in_dim, out_dim),
+        torch.nn.BatchNorm1d(out_dim),
         torch.nn.ReLU()
     )
     return ffnlayer
 
-def deconv_relu(inch,outch,kernel_size,stride=1,padding=1):
+def deconv_bn_relu(inch,outch,kernel_size,stride=1,padding=1):
     convlayer = torch.nn.Sequential(
         torch.nn.ConvTranspose2d(inch,outch,kernel_size=kernel_size,stride=stride,padding=padding),
         torch.nn.BatchNorm2d(outch),
@@ -75,20 +83,17 @@ class EncoderDecoder64x1x1(torch.nn.Module):
             conv2d_bn_relu(64,64,(3,4),stride=(1,2)),
             conv2d_bn_relu(64,64,3),
         )
-        self.conv_ffn1 = ffn_relu(64, 128)
-        self.conv_ffn2 = ffn_relu(128, 128)
-        self.conv_ffn3 = torch.nn.Linear(128, 128)
+
+        self.conv_ffn = ffn_bn(64, 128)
+        self.deconv_ffn = ffn_bn_relu(64, 64)
         
-        self.deconv_ffn3 = ffn_relu(64, 128)
-        self.deconv_ffn2 = ffn_relu(128, 128)
-        self.deconv_ffn1 = ffn_relu(128, 64)
-        self.deconv_8 = deconv_relu(64,64,(3,4),stride=(1,2))
-        self.deconv_7 = deconv_relu(67,64,4,stride=2)
-        self.deconv_6 = deconv_relu(67,64,4,stride=2)
-        self.deconv_5 = deconv_relu(67,64,4,stride=2)
-        self.deconv_4 = deconv_relu(67,64,4,stride=2)
-        self.deconv_3 = deconv_relu(67,32,4,stride=2)
-        self.deconv_2 = deconv_relu(35,16,4,stride=2)
+        self.deconv_8 = deconv_bn_relu(64,64,(3,4),stride=(1,2))
+        self.deconv_7 = deconv_bn_relu(67,64,4,stride=2)
+        self.deconv_6 = deconv_bn_relu(67,64,4,stride=2)
+        self.deconv_5 = deconv_bn_relu(67,64,4,stride=2)
+        self.deconv_4 = deconv_bn_relu(67,64,4,stride=2)
+        self.deconv_3 = deconv_bn_relu(67,32,4,stride=2)
+        self.deconv_2 = deconv_bn_relu(35,16,4,stride=2)
         self.deconv_1 = deconv_sigmoid(19,3,4,stride=2)
 
         self.predict_8 = torch.nn.Conv2d(64,3,3,stride=1,padding=1)
@@ -138,20 +143,13 @@ class EncoderDecoder64x1x1(torch.nn.Module):
         conv7_out = self.conv_stack7(conv6_out)
         conv8_out = self.conv_stack8(conv7_out)
         conv8_out = torch.reshape(conv8_out, (-1, 64))
-
-        ffn1_out = self.conv_ffn1(conv8_out)
-        ffn2_out = self.conv_ffn2(ffn1_out)
-        ffn3_out = self.conv_ffn3(ffn2_out)
-        return ffn3_out
+        ffn_out = self.conv_ffn(conv8_out)
+        return ffn_out
 
     def decoder(self, x):
-        deconv_ffn3_out = self.deconv_ffn3(x)
-        deconv_ffn2_out = self.deconv_ffn2(deconv_ffn3_out)
-        deconv_ffn1_out = self.deconv_ffn1(deconv_ffn2_out)
-
-        deconv_ffn1_out = torch.reshape(deconv_ffn1_out, (-1, 64, 1, 1))
-        deconv8_out = self.deconv_8(deconv_ffn1_out)
-        predict_8_out = self.up_sample_8(self.predict_8(deconv_ffn1_out))
+        deconv_ffn_out = self.deconv_ffn(x).reshape((-1, 64, 1, 1))
+        deconv8_out = self.deconv_8(deconv_ffn_out)
+        predict_8_out = self.up_sample_8(self.predict_8(deconv_ffn_out))
 
         concat_7 = torch.cat([deconv8_out, predict_8_out], dim=1)
         deconv7_out = self.deconv_7(concat_7)
@@ -196,7 +194,7 @@ class EncoderDecoder64x1x1(torch.nn.Module):
             z = reparametrize(mu, logvar)
             rx = self.decoder(reconstructed_latent).view(x.size())
             return rx, z, mu, logvar
-
+            
 
 class SirenLayer(nn.Module):
     def __init__(self, in_f, out_f, w0=30, is_first=False, is_last=False):
@@ -218,6 +216,31 @@ class SirenLayer(nn.Module):
         return x if self.is_last else torch.sin(self.w0 * x)
 
 
+class RefineCircularMotionModel(torch.nn.Module):
+    def __init__(self, in_channels):
+        super(RefineCircularMotionModel, self).__init__()
+
+        self.layer1 = SirenLayer(in_channels, 128, is_first=True)
+        self.layer2 = SirenLayer(128, 64)
+        self.layer3 = SirenLayer(64, 32)
+        self.layer4 = SirenLayer(32, 2)
+        self.layer5 = SirenLayer(2, 32)
+        self.layer6 = SirenLayer(32, 64)
+        self.layer7 = SirenLayer(64, 128)
+        self.layer8 = SirenLayer(128, in_channels, is_last=True)
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        latent = self.layer4(x)
+        x = self.layer5(latent)
+        x = self.layer6(x)
+        x = self.layer7(x)
+        x = self.layer8(x)
+        return x, latent
+
+
 class RefineSinglePendulumModel(torch.nn.Module):
     def __init__(self, in_channels):
         super(RefineSinglePendulumModel, self).__init__()
@@ -235,12 +258,12 @@ class RefineSinglePendulumModel(torch.nn.Module):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
-        z = self.layer4(x)
-        x = self.layer5(z)
+        latent = self.layer4(x)
+        x = self.layer5(latent)
         x = self.layer6(x)
         x = self.layer7(x)
-        rx = self.layer8(x)
-        return rx, z
+        x = self.layer8(x)
+        return x, z
 
 
 class RefineDoublePendulumModel(torch.nn.Module):

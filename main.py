@@ -63,6 +63,7 @@ def main():
 
     # define trainer
     trainer = Trainer(accelerator='gpu',
+                      # devices=-1,
                       num_nodes=cfg.num_gpus,
                       max_epochs=cfg.epochs,
                       deterministic=True,

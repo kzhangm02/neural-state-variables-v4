@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 from dataset import NeuralPhysDataset, NeuralPhysRefineDataset
 from model_utils import (EncoderDecoder64x1x1,
+                         RefineCircularMotionModel,
                          RefineSinglePendulumModel,
                          RefineDoublePendulumModel,
                          RefineElasticPendulumModel)
@@ -58,6 +59,8 @@ class VisDynamicsModel(pl.LightningModule):
         if self.hparams.model_name == 'encoder-decoder-64':
             self.model = EncoderDecoder64x1x1(in_channels=3)
         if self.hparams.model_name == 'refine-64':
+            if self.hparams.dataset == 'circular_motion':
+                self.model = RefineCircularMotionModel(in_channels=64)
             if self.hparams.dataset == 'single_pendulum':
                 self.model = RefineSinglePendulumModel(in_channels=64)
             if self.hparams.dataset == 'double_pendulum':
@@ -77,8 +80,10 @@ class VisDynamicsModel(pl.LightningModule):
 
         return (
             (rec_loss + self.hparams.lda * reg_loss + self.hparams.beta * torch.abs(kl_diverge)),
+            # (rec_loss + self.hparams.lda * reg_loss),
             rec_loss, 
             reg_loss,
+            # 0.0,
             kl_diverge,   
         )
     
@@ -116,9 +121,6 @@ class VisDynamicsModel(pl.LightningModule):
         elif self.hparams.model_name == 'refine-64':
             output, latent = self.model(x)
             return output, latent
-        output = torch.reshape(output, x.size())
-        latent = torch.reshape(latent, (*x.size()[:2], -1))
-        return output, latent
 
     def training_step(self, batch, batch_idx):
         data, target, filepath = batch
@@ -208,9 +210,9 @@ class VisDynamicsModel(pl.LightningModule):
                 mu_tmp = mu_tmp.cpu().detach().numpy()
                 self.all_mus.append(mu_tmp)
 
-                logvar_tmp = logvar[idx].view(1, -1)[0]
-                logvar_tmp = logvar_tmp.cpu().detach().numpy()
-                self.all_logvars.append(logvar_tmp)
+                # logvar_tmp = logvar[idx].view(1, -1)[0]
+                # logvar_tmp = logvar_tmp.cpu().detach().numpy()
+                # self.all_logvars.append(logvar_tmp)
 
         elif self.hparams.model_name  == 'refine-64':
             data, target, filepath = batch
