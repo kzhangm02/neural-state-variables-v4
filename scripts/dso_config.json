@@ -1,0 +1,94 @@
+{
+   "experiment" : {
+      "logdir" : "./log",
+      "exp_name" : "test",
+      "seed" : 0
+   },
+
+   "task" : {
+      "task_type" : "regression",
+      "function_set": ["add", "sub", "mul", "div", "sin", "n2"],
+      "metric" : "inv_nrmse",
+      "metric_params" : [1.0],
+      "extra_metric_test" : null,
+      "extra_metric_test_params" : [],
+      "threshold" : 1e-12,
+      "protected" : false,
+      "reward_noise" : 0.0,
+      "reward_noise_type" : "r",
+      "normalize_variance" : false,
+      "decision_tree_threshold_set" : [0.0],
+      "poly_optimizer_params" : {
+         "degree": 2,
+         "coef_tol": 1e-6,
+         "regressor": "dso_least_squares",
+         "regressor_params": {
+            "cutoff_p_value": 1.0,
+            "n_max_terms": null,
+            "coef_tol": 1e-6
+         }
+      }
+   },
+
+   "training" : {
+      "n_samples" : 2000000,
+      "batch_size" : 1000,
+      "epsilon" : 0.05,
+      "n_cores_batch" : 8
+   },
+
+   "policy_optimizer" : {
+      "learning_rate" : 0.0005,
+      "entropy_weight" : 0.03,
+      "entropy_gamma" : 0.7
+   },
+
+   "prior": {
+      "length" : {
+         "min_" : 4,
+         "max_" : 64,
+         "on" : true
+      },
+      "repeat" : {
+         "tokens" : "const",
+         "min_" : null,
+         "max_" : 3,
+         "on" : true
+      },
+      "inverse" : {
+         "on" : true
+      },
+      "trig" : {
+         "on" : true
+      },
+      "const" : {
+         "on" : true
+      },
+      "no_inputs" : {
+         "on" : true
+      },
+      "uniform_arity" : {
+         "on" : true
+      },
+      "soft_length" : {
+         "loc" : 10,
+         "scale" : 5,
+         "on" : false
+      },
+      "domain_range" : {
+         "on" : false
+      }
+   },
+
+   "logging" : {
+      "save_all_iterations" : false,
+      "save_summary" : false,
+      "save_positional_entropy" : false,
+      "save_pareto_front" : true,
+      "save_cache" : true,
+      "save_cache_r_min" : 0.5,
+      "save_freq" : 1,
+      "save_token_count" : false,
+      "hof" : 10
+   },
+ }
