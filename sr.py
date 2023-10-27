@@ -46,11 +46,11 @@ def main():
     log_dir = '_'.join([cfg.log_dir, cfg.dataset, cfg.model_name.replace('sr', '64'), str(cfg.seed)])
     variable_dir = os.path.join(log_dir, 'variables_train')
     ids = np.load(os.path.join(variable_dir, 'ids.npy'))
-    ids = [int(id[:id.index('_')]) for id in ids][::cfg.num_frames-3]
+    ids = [int(id[:id.index('_')]) for id in ids][::cfg.num_frames-1]
 
     states_dir = os.path.join(cfg.data_filepath, 'collect', cfg.dataset, 'states.npy')
-    states = np.load(states_dir)
-    states = states[ids, :cfg.num_frames-3]
+    states_raw = np.load(states_dir)
+    states = np.concatenate([states_raw[ids, :cfg.num_frames-1, :1], states_raw[ids, 1:, :1]], axis=2)
     states = np.reshape(states, (-1, cfg.intrinsic_dimension))
     latent = np.load(os.path.join(variable_dir, 'refine_latent.npy'))
 
@@ -62,19 +62,19 @@ def main():
     model = PySRRegressor(
         niterations=cfg.niterations,
         maxsize=cfg.maxsize,
-        loss="L2DistLoss()",
+        loss="L1DistLoss()",
         batching=True,
         batch_size=cfg.batch_size,
         model_selection='accuracy',
         complexity_of_constants=cfg.complexity_of_constants,
-        weight_add_node=cfg.weight_add_node,
-        weight_insert_node=cfg.weight_insert_node,
-        weight_delete_node=cfg.weight_delete_node,
-        weight_do_nothing=cfg.weight_do_nothing,
-        weight_mutate_constant=cfg.weight_mutate_constant,
-        weight_mutate_operator=cfg.weight_mutate_operator,
-        weight_simplify=cfg.weight_simplify,
-        weight_randomize=cfg.weight_randomize,
+        # weight_add_node=cfg.weight_add_node,
+        # weight_insert_node=cfg.weight_insert_node,
+        # weight_delete_node=cfg.weight_delete_node,
+        # weight_do_nothing=cfg.weight_do_nothing,
+        # weight_mutate_constant=cfg.weight_mutate_constant,
+        # weight_mutate_operator=cfg.weight_mutate_operator,
+        # weight_simplify=cfg.weight_simplify,
+        # weight_randomize=cfg.weight_randomize,
         binary_operators=cfg.binary_operators,
         unary_operators=cfg.unary_operators,
         constraints=cfg.constraints,

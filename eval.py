@@ -41,24 +41,31 @@ def main():
     seed(cfg)
     seed_everything(cfg.seed)
     log_dir = '_'.join([cfg.log_dir, cfg.dataset, cfg.model_name, str(cfg.seed)])
+    high_dim_checkpoint_filepath = str(sys.argv[2])
+    refine_checkpoint_filepath = str(sys.argv[3])
 
-    model = VisDynamicsModel(beta=cfg.beta,
-                             lda=cfg.lda,
-                             lr=cfg.lr,
-                             seed=cfg.seed,
-                             if_cuda=cfg.if_cuda,
-                             if_test=True,
-                             gamma=cfg.gamma,
-                             log_dir=log_dir,
-                             train_batch=cfg.train_batch,
-                             val_batch=cfg.val_batch,
-                             test_batch=cfg.test_batch,
-                             num_workers=cfg.num_workers,
-                             model_name=cfg.model_name,
-                             data_filepath=cfg.data_filepath,
-                             dataset=cfg.dataset,
-                             num_frames=cfg.num_frames,
-                             lr_schedule=cfg.lr_schedule)
+    model = VisDynamicsModel(
+        beta=cfg.beta,
+        lda1=cfg.lda1,
+        lda2=cfg.lda2,
+        lda3=cfg.lda3,
+        lr=cfg.lr,
+        seed=cfg.seed,
+        if_cuda=cfg.if_cuda,
+        if_test=True,
+        gamma=cfg.gamma,
+        log_dir=log_dir,
+        train_batch=cfg.train_batch,
+        val_batch=cfg.val_batch,
+        test_batch=cfg.test_batch,
+        num_workers=cfg.num_workers,
+        model_name=cfg.model_name,
+        data_filepath=cfg.data_filepath,
+        dataset=cfg.dataset,
+        num_frames=cfg.num_frames,
+        lr_schedule=cfg.lr_schedule,
+        high_dim_ckpt_dir=high_dim_checkpoint_filepath
+    )
     
     def load_checkpoint(filepath, model):
         checkpoint_filepath = glob.glob(os.path.join(filepath, '*.ckpt'))[0]
@@ -66,21 +73,29 @@ def main():
         ckpt = rename_ckpt_for_multi_models(ckpt)
         model.load_state_dict(ckpt)
     
-    high_dim_checkpoint_filepath = str(sys.argv[2])
-    refine_checkpoint_filepath = str(sys.argv[3])
+    def load_dynamics_checkpoint(filepath, model):
+        checkpoint_filepath = glob.glob(os.path.join(filepath, '*.ckpt'))[0]
+        ckpt = torch.load(checkpoint_filepath)
+        ckpt = rename_ckpt_for_dynamics_models(ckpt)
+        model.load_state_dict(ckpt)
 
     if cfg.model_name == 'encoder-decoder-64':
         load_checkpoint(high_dim_checkpoint_filepath, model.model)
+        load_dynamics_checkpoint(high_dim_checkpoint_filepath, model.dynamics_model)
     elif cfg.model_name == 'refine-64':
-        load_checkpoint(high_dim_checkpoint_filepath, model.high_dim_model)
         load_checkpoint(refine_checkpoint_filepath, model.model)
+        load_dynamics_checkpoint(refine_checkpoint_filepath, model.dynamics_model)
 
     model.eval()
     model.freeze()
-    trainer = Trainer(num_nodes=cfg.num_gpus,
-                      deterministic=True,
-                      default_root_dir=log_dir,
-                      val_check_interval=1.0)
+    trainer = Trainer(
+        accelerator='gpu',
+        num_nodes=cfg.num_gpus,
+        deterministic=True,
+        strategy='ddp',
+        default_root_dir=log_dir,
+        val_check_interval=1.0,
+    )
 
     trainer.test(model)
     model.test_save()
@@ -88,10 +103,22 @@ def main():
 def rename_ckpt_for_multi_models(ckpt):
     renamed_state_dict = OrderedDict()
     for k, v in ckpt['state_dict'].items():
+        if 'dynamics' in k:
+            continue
         if 'high_dim_model' in k:
-            name = k.replace('high_dim_model.', '')
+            continue
         else:
             name = k.replace('model.', '')
+        renamed_state_dict[name] = v
+    return renamed_state_dict
+
+def rename_ckpt_for_dynamics_models(ckpt):
+    renamed_state_dict = OrderedDict()
+    for k, v in ckpt['state_dict'].items():
+        if 'dynamics' in k:
+            name = k.replace('dynamics_model.', '')
+        else:
+            continue
         renamed_state_dict[name] = v
     return renamed_state_dict
 
@@ -106,7 +133,9 @@ def gather_latent_from_trained_high_dim_model():
     log_dir = '_'.join([cfg.log_dir, cfg.dataset, cfg.model_name, str(cfg.seed)])
 
     model = VisDynamicsModel(beta=cfg.beta,
-                             lda=cfg.lda,
+                             lda1=cfg.lda1,
+                             lda2=cfg.lda2,
+                             lda3=cfg.lda3,
                              lr=cfg.lr,
                              seed=cfg.seed,
                              if_cuda=cfg.if_cuda,
@@ -160,17 +189,20 @@ def gather_latent_from_trained_high_dim_model():
         elif flag == 'val':
             loader = val_loader
         all_filepaths = []
-        all_latents, all_mus, all_logvars = [], [], []
+        all_latents, all_mus, all_logvars, all_next_latent = [], [], [], []
         var_log_dir = os.path.join(log_dir, 'variables')
         for batch_idx, (data, target, filepath) in enumerate(tqdm(loader)):
             data = torch.reshape(data, (-1, *data.shape[-3:]))
             target = torch.reshape(target, (-1, *target.shape[-3:]))
             filepath = np.transpose(filepath).flatten()
-            output, latent, mu, logvar = model.model(data.cuda(), None)
+            _, latent, mu, logvar = model.model(data.cuda(), None)
+            next_latent = model.dynamics_model(latent)
 
             latent = torch.reshape(latent, (data.size()[0], -1))
             mu = torch.reshape(mu, (data.size()[0], -1))
             logvar = torch.reshape(logvar, (data.size()[0], -1))
+            next_latent = torch.reshape(next_latent, (data.size()[0], -1))
+
             # save the latent vectors
             all_filepaths.extend(filepath)
             for idx in range(data.shape[0]):
@@ -186,11 +218,16 @@ def gather_latent_from_trained_high_dim_model():
                 logvar_tmp = logvar_tmp.cpu().detach().numpy()
                 all_logvars.append(logvar_tmp)
 
+                next_latent_tmp = next_latent[idx].view(1, -1)[0]
+                next_latent_tmp = next_latent_tmp.cpu().detach().numpy()
+                all_next_latent.append(next_latent_tmp)
+
         mkdir(var_log_dir+'_'+flag)
         np.save(os.path.join(var_log_dir+'_'+flag, 'ids.npy'), all_filepaths)
         np.save(os.path.join(var_log_dir+'_'+flag, 'latent.npy'), all_latents)
         np.save(os.path.join(var_log_dir+'_'+flag, 'mu.npy'), all_mus)
         np.save(os.path.join(var_log_dir+'_'+flag, 'logvar.npy'), all_logvars)
+        np.save(os.path.join(var_log_dir+'_'+flag, 'next_latent.npy'), all_next_latent)
 
     # run train forward pass to save the latent vector for training the refine network later
     gather_latent(flag='train')
@@ -207,9 +244,13 @@ def gather_latent_from_trained_refine_model():
     seed(cfg)
     seed_everything(cfg.seed)
     log_dir = '_'.join([cfg.log_dir, cfg.dataset, cfg.model_name, str(cfg.seed)])
+    high_dim_checkpoint_filepath = str(sys.argv[2])
+    refine_checkpoint_filepath = str(sys.argv[3])
 
     model = VisDynamicsModel(beta=cfg.beta,
-                             lda=cfg.lda,
+                             lda1=cfg.lda1,
+                             lda2=cfg.lda2,
+                             lda3=cfg.lda3,
                              lr=cfg.lr,
                              seed=cfg.seed,
                              if_cuda=cfg.if_cuda,
@@ -223,19 +264,16 @@ def gather_latent_from_trained_refine_model():
                              model_name=cfg.model_name,
                              data_filepath=cfg.data_filepath,
                              dataset=cfg.dataset,
-                             lr_schedule=cfg.lr_schedule)
+                             lr_schedule=cfg.lr_schedule,
+                             high_dim_ckpt_dir=high_dim_checkpoint_filepath)
 
-    high_dim_checkpoint_filepath = str(sys.argv[2])
-    high_dim_checkpoint_filepath = glob.glob(os.path.join(high_dim_checkpoint_filepath, '*.ckpt'))[0]
-    high_dim_ckpt = torch.load(high_dim_checkpoint_filepath)
-    high_dim_ckpt = rename_ckpt_for_multi_models(high_dim_ckpt)
-    model.high_dim_model.load_state_dict(high_dim_ckpt)
-
-    refine_checkpoint_filepath = str(sys.argv[3])
     refine_checkpoint_filepath = glob.glob(os.path.join(refine_checkpoint_filepath, '*.ckpt'))[0]
+    print('Loading', refine_checkpoint_filepath)
     refine_ckpt = torch.load(refine_checkpoint_filepath)
-    refine_ckpt = rename_ckpt_for_multi_models(refine_ckpt)
-    model.model.load_state_dict(refine_ckpt)
+    ckpt = rename_ckpt_for_multi_models(refine_ckpt)
+    model.model.load_state_dict(ckpt)
+    ckpt = rename_ckpt_for_dynamics_models(refine_ckpt)
+    model.dynamics_model.load_state_dict(ckpt)
 
     model = model.to('cuda')
     model.eval()
@@ -270,35 +308,61 @@ def gather_latent_from_trained_refine_model():
             loader = val_loader
         all_filepaths = []
         all_latents = []
+        all_mus = []
+        all_logvars = []
         all_refine_latents = []
+        all_next_refine_latents = []
         all_reconstructed_latents = []
         var_log_dir = os.path.join(log_dir, 'variables')
         for batch_idx, (data, target, filepath) in enumerate(tqdm(loader)):
+            data = data.cuda()
+            target = target.cuda()
             data = torch.reshape(data, (-1, *data.shape[-3:]))
             target = torch.reshape(target, (-1, *target.shape[-3:]))
             filepath = np.transpose(filepath).flatten()
+            _, latent64, mu64, logvar64 = model.high_dim_model(data, None)
 
-            _, latent, mu, logvar = model.high_dim_model(data.cuda(), None)
-            latent_reconstructed, latent_latent = model.model(mu.squeeze())
+            reconstructed_latent64, latent = model.train_forward(mu64)
+            # output = model.high_dim_model.decoder(reconstructed_latent64)
+            next_latent = model.dynamics_model(latent)
+            # next_reconstructed_latent64 = model.model.decoder(next_latent)
+            # next_output = model.high_dim_model.decoder(next_reconstructed_latent64)
+            
             # save the latent vectors
             all_filepaths.extend(filepath)
             for idx in range(data.shape[0]):
-                latent_tmp = latent[idx].view(1, -1)[0]
+                # save latent: the latent vector in the encoder-decoder-64 network
+                latent_tmp = latent64[idx].view(1, -1)[0]
                 latent_tmp = latent_tmp.cpu().detach().numpy()
                 all_latents.append(latent_tmp)
-                # save latent_latent: the latent vector in the refine network
-                latent_latent_tmp = latent_latent[idx].view(1, -1)[0]
-                latent_latent_tmp = latent_latent_tmp.cpu().detach().numpy()
-                all_refine_latents.append(latent_latent_tmp)
+                # save mu: the mu vector in the encoder-decoder-64 network
+                mu_tmp = mu64[idx].view(1, -1)[0]
+                mu_tmp = mu_tmp.cpu().detach().numpy()
+                all_mus.append(mu_tmp)
+                # save logvar: the logvar vector in the encoder-decoder-64 network
+                logvar_tmp = logvar64[idx].view(1, -1)[0]
+                logvar_tmp = logvar_tmp.cpu().detach().numpy()
+                all_logvars.append(logvar_tmp)
+                # save refine_latent: the latent vector in the refine network
+                refine_latent_tmp = latent[idx].view(1, -1)[0]
+                refine_latent_tmp = refine_latent_tmp.cpu().detach().numpy()
+                all_refine_latents.append(refine_latent_tmp)
+                # save next_refine_latent: the latent vector in the refine network at time t+1
+                next_refine_latent_tmp = next_latent[idx].view(1, -1)[0]
+                next_refine_latent_tmp = next_refine_latent_tmp.cpu().detach().numpy()
+                all_next_refine_latents.append(next_refine_latent_tmp)
                 # save latent_reconstructed: the latent vector reconstructed by the entire refine network
-                latent_reconstructed_tmp = latent_reconstructed[idx].view(1, -1)[0]
+                latent_reconstructed_tmp = reconstructed_latent64[idx].view(1, -1)[0]
                 latent_reconstructed_tmp = latent_reconstructed_tmp.cpu().detach().numpy()
                 all_reconstructed_latents.append(latent_reconstructed_tmp)
 
         mkdir(var_log_dir+'_'+flag)
         np.save(os.path.join(var_log_dir+'_'+flag, 'ids.npy'), all_filepaths)
         np.save(os.path.join(var_log_dir+'_'+flag, 'latent.npy'), all_latents)
+        np.save(os.path.join(var_log_dir+'_'+flag, 'mu.npy'), all_mus)
+        np.save(os.path.join(var_log_dir+'_'+flag, 'logvar.npy'), all_logvars)
         np.save(os.path.join(var_log_dir+'_'+flag, 'refine_latent.npy'), all_refine_latents)
+        np.save(os.path.join(var_log_dir+'_'+flag, 'next_refine_latent.npy'), all_next_refine_latents)
         np.save(os.path.join(var_log_dir+'_'+flag, 'reconstructed_latent.npy'), all_reconstructed_latents)
 
     # run train forward pass to save the latent vector for training data
@@ -333,10 +397,13 @@ def eval_sr_model():
 
     def load_states_latent(latent_dir):
         ids = np.load(os.path.join(latent_dir, 'ids.npy'))
-        ids = [int(id[:id.index('_')]) for id in ids][::cfg.num_frames-3]
+        ids = [int(id[:id.index('_')]) for id in ids][::cfg.num_frames-1]
         states_dir = os.path.join(cfg.data_filepath, 'collect', cfg.dataset, 'states.npy')
-        states = np.load(states_dir)
-        states = states[ids, :cfg.num_frames-3]
+        # states = np.load(states_dir)
+        # states = states[ids, :cfg.num_frames-1]
+        # states = np.reshape(states, (-1, cfg.intrinsic_dimension))
+        states_raw = np.load(states_dir)
+        states = np.concatenate([states_raw[ids, :cfg.num_frames-1, :1], states_raw[ids, 1:, :1]], axis=2)
         states = np.reshape(states, (-1, cfg.intrinsic_dimension))
         latent = np.load(os.path.join(latent_dir, 'refine_latent.npy'))
         return (states, latent)
