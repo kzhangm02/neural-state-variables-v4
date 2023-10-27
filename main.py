@@ -30,7 +30,8 @@ def main():
     cfg = munchify(cfg)
     seed(cfg)
     seed_everything(cfg.seed)            
-    log_dir = '_'.join([cfg.log_dir, cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir_name = '_'.join([cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir = os.path.join(cfg.log_dir, log_dir_name)
                             
     model = VisDynamicsModel(
         beta=cfg.beta,

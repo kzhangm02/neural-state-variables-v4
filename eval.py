@@ -40,7 +40,8 @@ def main():
     cfg = munchify(cfg)
     seed(cfg)
     seed_everything(cfg.seed)
-    log_dir = '_'.join([cfg.log_dir, cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir_name = '_'.join([cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir = os.path.join(cfg.log_dir, log_dir_name)
     high_dim_checkpoint_filepath = str(sys.argv[2])
     refine_checkpoint_filepath = str(sys.argv[3])
 
@@ -130,27 +131,30 @@ def gather_latent_from_trained_high_dim_model():
     cfg = munchify(cfg)
     seed(cfg)
     seed_everything(cfg.seed)
-    log_dir = '_'.join([cfg.log_dir, cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir_name = '_'.join([cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir = os.path.join(cfg.log_dir, log_dir_name)
 
-    model = VisDynamicsModel(beta=cfg.beta,
-                             lda1=cfg.lda1,
-                             lda2=cfg.lda2,
-                             lda3=cfg.lda3,
-                             lr=cfg.lr,
-                             seed=cfg.seed,
-                             if_cuda=cfg.if_cuda,
-                             if_test=True,
-                             gamma=cfg.gamma,
-                             log_dir=log_dir,
-                             train_batch=cfg.train_batch,
-                             val_batch=cfg.val_batch,
-                             test_batch=cfg.test_batch,
-                             num_workers=cfg.num_workers,
-                             model_name=cfg.model_name,
-                             data_filepath=cfg.data_filepath,
-                             dataset=cfg.dataset,
-                             num_frames=cfg.num_frames,
-                             lr_schedule=cfg.lr_schedule)
+    model = VisDynamicsModel(
+        beta=cfg.beta,
+        lda1=cfg.lda1,
+        lda2=cfg.lda2,
+        lda3=cfg.lda3,
+        lr=cfg.lr,
+        seed=cfg.seed,
+        if_cuda=cfg.if_cuda,
+        if_test=True,
+        gamma=cfg.gamma,
+        log_dir=log_dir,
+        train_batch=cfg.train_batch,
+        val_batch=cfg.val_batch,
+        test_batch=cfg.test_batch,
+        num_workers=cfg.num_workers,
+        model_name=cfg.model_name,
+        data_filepath=cfg.data_filepath,
+        dataset=cfg.dataset,
+        num_frames=cfg.num_frames,
+        lr_schedule=cfg.lr_schedule
+    )
 
     high_dim_checkpoint_filepath = str(sys.argv[2])
     high_dim_checkpoint_filepath = glob.glob(os.path.join(high_dim_checkpoint_filepath, '*.ckpt'))[0]
@@ -163,25 +167,33 @@ def gather_latent_from_trained_high_dim_model():
 
     # prepare train and val dataset
     kwargs = {'num_workers': cfg.num_workers, 'pin_memory': True} if cfg.if_cuda else {}
-    train_dataset = NeuralPhysDataset(data_filepath=cfg.data_filepath,
-                                      num_frames=cfg.num_frames,
-                                      flag='train',
-                                      seed=cfg.seed,
-                                      object_name=cfg.dataset)
-    val_dataset =   NeuralPhysDataset(data_filepath=cfg.data_filepath,
-                                      num_frames=cfg.num_frames,
-                                      flag='val',
-                                      seed=cfg.seed,
-                                      object_name=cfg.dataset)
+    train_dataset = NeuralPhysDataset(
+        data_filepath=cfg.data_filepath,
+        num_frames=cfg.num_frames,
+        flag='train',
+        seed=cfg.seed,
+        object_name=cfg.dataset
+    )
+    val_dataset = NeuralPhysDataset(
+        data_filepath=cfg.data_filepath,
+        num_frames=cfg.num_frames,
+        flag='val',
+        seed=cfg.seed,
+        object_name=cfg.dataset
+    )
     # prepare train and val loader
-    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                               batch_size=cfg.train_batch,
-                                               shuffle=False,
-                                               **kwargs)
-    val_loader =   torch.utils.data.DataLoader(dataset=val_dataset,
-                                               batch_size=cfg.val_batch,
-                                               shuffle=False,
-                                               **kwargs)
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_dataset,
+        batch_size=cfg.train_batch,
+        shuffle=False,
+        **kwargs
+    )
+    val_loader =   torch.utils.data.DataLoader(
+        dataset=val_dataset,
+        batch_size=cfg.val_batch,
+        shuffle=False,
+        **kwargs
+    )
     
     def gather_latent(flag):
         if flag == 'train':
@@ -243,29 +255,32 @@ def gather_latent_from_trained_refine_model():
     cfg = munchify(cfg)
     seed(cfg)
     seed_everything(cfg.seed)
-    log_dir = '_'.join([cfg.log_dir, cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir_name = '_'.join([cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir = os.path.join(cfg.log_dir, log_dir_name)
     high_dim_checkpoint_filepath = str(sys.argv[2])
     refine_checkpoint_filepath = str(sys.argv[3])
 
-    model = VisDynamicsModel(beta=cfg.beta,
-                             lda1=cfg.lda1,
-                             lda2=cfg.lda2,
-                             lda3=cfg.lda3,
-                             lr=cfg.lr,
-                             seed=cfg.seed,
-                             if_cuda=cfg.if_cuda,
-                             if_test=True,
-                             gamma=cfg.gamma,
-                             log_dir=log_dir,
-                             train_batch=cfg.train_batch,
-                             val_batch=cfg.val_batch,
-                             test_batch=cfg.test_batch,
-                             num_workers=cfg.num_workers,
-                             model_name=cfg.model_name,
-                             data_filepath=cfg.data_filepath,
-                             dataset=cfg.dataset,
-                             lr_schedule=cfg.lr_schedule,
-                             high_dim_ckpt_dir=high_dim_checkpoint_filepath)
+    model = VisDynamicsModel(
+        beta=cfg.beta,
+        lda1=cfg.lda1,
+        lda2=cfg.lda2,
+        lda3=cfg.lda3,
+        lr=cfg.lr,
+        seed=cfg.seed,
+        if_cuda=cfg.if_cuda,
+        if_test=True,
+        gamma=cfg.gamma,
+        log_dir=log_dir,
+        train_batch=cfg.train_batch,
+        val_batch=cfg.val_batch,
+        test_batch=cfg.test_batch,
+        num_workers=cfg.num_workers,
+        model_name=cfg.model_name,
+        data_filepath=cfg.data_filepath,
+        dataset=cfg.dataset,
+        lr_schedule=cfg.lr_schedule,
+        high_dim_ckpt_dir=high_dim_checkpoint_filepath
+    )
 
     refine_checkpoint_filepath = glob.glob(os.path.join(refine_checkpoint_filepath, '*.ckpt'))[0]
     print('Loading', refine_checkpoint_filepath)
@@ -281,25 +296,33 @@ def gather_latent_from_trained_refine_model():
 
     # prepare train and val dataset
     kwargs = {'num_workers': cfg.num_workers, 'pin_memory': True} if cfg.if_cuda else {}
-    train_dataset = NeuralPhysDataset(data_filepath=cfg.data_filepath,
-                                      num_frames=cfg.num_frames,
-                                      flag='train',
-                                      seed=cfg.seed,
-                                      object_name=cfg.dataset)
-    val_dataset =   NeuralPhysDataset(data_filepath=cfg.data_filepath,
-                                      num_frames=cfg.num_frames,
-                                      flag='val',
-                                      seed=cfg.seed,
-                                      object_name=cfg.dataset)
+    train_dataset = NeuralPhysDataset(
+        data_filepath=cfg.data_filepath,
+        num_frames=cfg.num_frames,
+        flag='train',
+        seed=cfg.seed,
+        object_name=cfg.dataset
+    )
+    val_dataset =   NeuralPhysDataset(
+        data_filepath=cfg.data_filepath,
+        num_frames=cfg.num_frames,
+        flag='val',
+        seed=cfg.seed,
+        object_name=cfg.dataset
+    )
     # prepare train and val loader
-    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
-                                               batch_size=cfg.gather_train_batch,
-                                               shuffle=False,
-                                               **kwargs)
-    val_loader =   torch.utils.data.DataLoader(dataset=val_dataset,
-                                               batch_size=cfg.gather_val_batch,
-                                               shuffle=False,
-                                               **kwargs)
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_dataset,
+        batch_size=cfg.gather_train_batch,
+        shuffle=False,
+        **kwargs
+    )
+    val_loader =   torch.utils.data.DataLoader(
+        dataset=val_dataset,
+        batch_size=cfg.gather_val_batch,
+        shuffle=False,
+        **kwargs
+    )
     
     def gather_latent(flag):
         if flag == 'train':
@@ -376,7 +399,8 @@ def eval_sr_model():
     cfg = load_config(filepath=config_filepath)
     pprint.pprint(cfg)
     cfg = munchify(cfg)
-    log_dir = '_'.join([cfg.log_dir, cfg.dataset, cfg.model_name.replace('sr', '64'), str(cfg.seed)])
+    log_dir_name = '_'.join([cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir = os.path.join(cfg.log_dir, log_dir_name)
 
     model_filepath = str(sys.argv[2])
     model = PySRRegressor.from_file(model_filepath)

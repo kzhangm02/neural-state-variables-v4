@@ -70,13 +70,10 @@ class NeuralPhysRefineDataset(Dataset):
         self.data_filepath = data_filepath
         self.object_name = object_name
         self.data = data
-        # self.target = target
         self.filepaths = filepaths
         self.num_frames = num_frames
-        # self.target = self.get_targets(filepaths)
     
     def get_targets(self, filepaths):
-        # print('getting targets')
         target = []
         obj_filepath = os.path.join(self.data_filepath, self.object_name)
         for fp in filepaths:
@@ -109,7 +106,6 @@ class NeuralPhysRefineDataset(Dataset):
         start = (self.num_frames - 1) * idx
         end = (self.num_frames - 1) * (idx + 1)
         data = self.data[start : end]
-        # target = self.target[start : end]
         filepaths = self.filepaths[start : end]
         target = self.get_targets(filepaths)
         filepaths = [f'{int(f[0])}_{int(f[1])}.png' for f in filepaths]
