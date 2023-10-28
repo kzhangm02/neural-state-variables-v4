@@ -287,17 +287,16 @@ class VisDynamicsModel(pl.LightningModule):
 
             losses = self.encoder_decoder64_loss(target, output, next_output, latent, next_latent, mu, logvar)
             test_loss, test_rec_loss, test_reg_loss, test_latent_rec_loss, test_kl_loss = losses
-            self.log('test/loss', test_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
-            self.log('test/rec_loss', test_rec_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
-            self.log('test/reg_loss', test_reg_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
-            self.log('test/latent_rec_loss', test_latent_rec_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
-            self.log('test/kl_loss', test_kl_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            self.log('test/loss', test_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            self.log('test/rec_loss', test_rec_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            self.log('test/reg_loss', test_reg_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            self.log('test/latent_rec_loss', test_latent_rec_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            self.log('test/kl_loss', test_kl_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
             
             target = torch.reshape(target, (-1, *target.shape[-3:]))
             filepath = np.transpose(filepath).flatten()
             self.all_filepaths.extend(filepath)
             for idx in range(data.shape[0]):
-                # print(target[idx, :, :, :128].unsqueeze(0).shape)
                 comparison = torch.cat([
                     target[idx, :, :, :128].unsqueeze(0),
                     target[idx, :, :, 128:].unsqueeze(0),
@@ -306,61 +305,72 @@ class VisDynamicsModel(pl.LightningModule):
                     next_output[idx, :, :, :128].unsqueeze(0),
                     next_output[idx, :, :, 128:].unsqueeze(0)
                 ])
-
-                save_image(comparison.cpu(), os.path.join(self.pred_log_dir, filepath[idx]), nrow=1)
-                latent_tmp = latent[idx].view(1, -1)[0]
-                latent_tmp = latent_tmp.cpu().detach().numpy()
-                self.all_latents.append(latent_tmp)
-
-                mu_tmp = mu[idx].view(1, -1)[0]
-                mu_tmp = mu_tmp.cpu().detach().numpy()
-                self.all_mus.append(mu_tmp)
-
-                logvar_tmp = logvar[idx].view(1, -1)[0]
-                logvar_tmp = logvar_tmp.cpu().detach().numpy()
-                self.all_logvars.append(logvar_tmp)
-
-                next_latent_tmp = next_latent[idx].view(1, -1)[0]
-                next_latent_tmp = next_latent_tmp.cpu().detach().numpy()
-                self.all_logvars.append(logvar_tmp)
-
-        elif self.hparams.model_name  == 'refine-64':
-            data, target, filepath = batch
-            data = torch.reshape(data, (-1, *data.shape[-3:]))
-            target = torch.reshape(target, (-1, *target.shape[-3:]))
-            filepath = np.transpose(filepath).flatten()
-
-            _, latent, mu, logvar = self.high_dim_model(data, None)
-            latent_reconstructed, latent_latent = self.model(mu.squeeze())
-            output, _, _, _ = self.high_dim_model(data, latent_reconstructed)
-            output = torch.reshape(output, target.size())
-            mse_loss = torch.nn.MSELoss(reduction='sum')
-            # latent_reconstruction_loss = mse_loss(latent_reconstructed, mu) / target.size()[0]
-            _, latent_reconstruction_loss, _ = self.refine_loss(latent_reconstructed, mu, mu, logvar)
-            pixel_reconstruction_loss = mse_loss(output, target) / target.size()[0]
-            self.log('latent_reconstruction_loss', latent_reconstruction_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.test_batch, sync_dist=True)
-            self.log('pixel_reconstruction_loss', pixel_reconstruction_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.test_batch, sync_dist=True)
-            self.all_filepaths.extend(filepath)
-            for idx in range(data.shape[0]):
-                comparison = torch.cat([data[idx,:, :, :128].unsqueeze(0),
-                                        data[idx,:, :, 128:].unsqueeze(0),
-                                        target[idx, :, :, :128].unsqueeze(0),
-                                        target[idx, :, :, 128:].unsqueeze(0),
-                                        output[idx, :, :, :128].unsqueeze(0),
-                                        output[idx, :, :, 128:].unsqueeze(0)])
                 save_image(comparison.cpu(), os.path.join(self.pred_log_dir, filepath[idx]), nrow=1)
                 # save latent: the latent vector in the encoder-decoder-64 network
                 latent_tmp = latent[idx].view(1, -1)[0]
+                latent_tmp = latent_tmp.cpu().detach().numpy()
+                self.all_latents.append(latent_tmp)
+                # save mu: the mu vector in the encoder-decoder-64 network
+                mu_tmp = mu[idx].view(1, -1)[0]
+                mu_tmp = mu_tmp.cpu().detach().numpy()
+                self.all_mus.append(mu_tmp)
+                # save logvar: the log of variance vector in the encoder-decoder-64 network
+                logvar_tmp = logvar[idx].view(1, -1)[0]
+                logvar_tmp = logvar_tmp.cpu().detach().numpy()
+                self.all_logvars.append(logvar_tmp)
+                # save next_latent: the next latent vector predicted by the dynamics network
+                next_latent_tmp = next_latent[idx].view(1, -1)[0]
+                next_latent_tmp = next_latent_tmp.cpu().detach().numpy()
+                self.all_next_latents.append(next_latent_tmp)
+
+        elif self.hparams.model_name  == 'refine-64':
+            self.high_dim_model.eval()
+            data, target, filepath = batch
+            data = torch.reshape(data, (-1, *data.shape[-3:]))
+            _, _, mu, logvar = self.high_dim_model(data, None)
+            reconstructed_latent, latent_latent = self.model(mu)
+            next_latent_latent = self.dynamics_model(latent_latent)
+            next_reconstructed_latent = self.model.decoder(next_latent_latent)
+            next_output = self.high_dim_model.decoder(next_reconstructed_latent)
+            output = self.high_dim_model.decoder(reconstructed_latent)
+
+            losses = self.refine_loss(target, output, next_output, mu, logvar, reconstructed_latent, next_reconstructed_latent, latent_latent, next_latent_latent)
+            test_loss, test_rec_loss, test_reg_loss, test_latent64_rec_loss, test_latent_rec_loss = losses 
+            self.log('test/loss', test_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            self.log('test/rec_loss', test_rec_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            self.log('test/reg_loss', test_reg_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            self.log('test/latent64_rec_loss', test_latent64_rec_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            self.log('test/latent_rec_loss', test_latent_rec_loss, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
+            
+            target = torch.reshape(target, (-1, *target.shape[-3:]))
+            filepath = np.transpose(filepath).flatten()
+            self.all_filepaths.extend(filepath)
+            for idx in range(data.shape[0]):
+                comparison = torch.cat([
+                    target[idx, :, :, :128].unsqueeze(0),
+                    target[idx, :, :, 128:].unsqueeze(0),
+                    output[idx, :, :, :128].unsqueeze(0),
+                    output[idx, :, :, 128:].unsqueeze(0),
+                    next_output[idx, :, :, :128].unsqueeze(0),
+                    next_output[idx, :, :, 128:].unsqueeze(0)
+                ])
+                save_image(comparison.cpu(), os.path.join(self.pred_log_dir, filepath[idx]), nrow=1)
+                # save latent: the latent vector in the encoder-decoder-64 network
+                latent_tmp = mu[idx].view(1, -1)[0]
                 latent_tmp = latent_tmp.cpu().detach().numpy()
                 self.all_latents.append(latent_tmp)
                 # save latent_latent: the latent vector in the refine network
                 latent_latent_tmp = latent_latent[idx].view(1, -1)[0]
                 latent_latent_tmp = latent_latent_tmp.cpu().detach().numpy()
                 self.all_refine_latents.append(latent_latent_tmp)
-                # save latent_reconstructed: the latent vector reconstructed by the entire refine network
-                latent_reconstructed_tmp = latent_reconstructed[idx].view(1, -1)[0]
-                latent_reconstructed_tmp = latent_reconstructed_tmp.cpu().detach().numpy()
-                self.all_reconstructed_latents.append(latent_reconstructed_tmp)
+                # save reconstructed_latent: the latent vector reconstructed by the refine network
+                reconstructed_latent_tmp = reconstructed_latent[idx].view(1, -1)[0]
+                reconstructed_latent_tmp = reconstructed_latent_tmp.cpu().detach().numpy()
+                self.all_reconstructed_latents.append(reconstructed_latent_tmp)
+                # save next_latent_latent: the next latent vector predicted by the refine dynamics network
+                next_latent_latent_tmp = next_latent_latent[idx].view(1, -1)[0]
+                next_latent_latent_tmp = next_latent_latent_tmp.cpu().detach().numpy()
+                self.all_next_refine_latents.append(next_latent_latent_tmp)
 
     def test_save(self):
         if self.hparams.model_name == 'encoder-decoder-64':
@@ -373,6 +383,7 @@ class VisDynamicsModel(pl.LightningModule):
             np.save(os.path.join(self.var_log_dir, 'ids.npy'), self.all_filepaths)
             np.save(os.path.join(self.var_log_dir, 'latent.npy'), self.all_latents)
             np.save(os.path.join(self.var_log_dir, 'refine_latent.npy'), self.all_refine_latents)
+            np.save(os.path.join(self.var_log_dir, 'next_refine_latent.npy'), self.all_next_refine_latents)
             np.save(os.path.join(self.var_log_dir, 'reconstructed_latent.npy'), self.all_reconstructed_latents)
 
     def configure_optimizers(self):

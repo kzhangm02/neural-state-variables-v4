@@ -345,11 +345,8 @@ def gather_latent_from_trained_refine_model():
             filepath = np.transpose(filepath).flatten()
             _, latent64, mu64, logvar64 = model.high_dim_model(data, None)
 
-            reconstructed_latent64, latent = model.train_forward(mu64)
-            # output = model.high_dim_model.decoder(reconstructed_latent64)
+            reconstructed_latent64, latent = model.model(mu64)
             next_latent = model.dynamics_model(latent)
-            # next_reconstructed_latent64 = model.model.decoder(next_latent)
-            # next_output = model.high_dim_model.decoder(next_reconstructed_latent64)
             
             # save the latent vectors
             all_filepaths.extend(filepath)
