@@ -73,7 +73,7 @@ def main():
 
     # define trainer
     # if cfg.seed == 1:
-    #     path = '/home/kevin/neural-state-variables-v4/scripts/logs_double_pendulum_encoder-decoder-64_1/lightning_logs/last_checkpoints/epoch=999-val_loss=120.9267.ckpt'
+    #     path = '/home/kevin/neural-state-variables-v4/logs/elastic_pendulum_encoder-decoder-64_1/lightning_logs/last_checkpoints/epoch=49-val_loss=62.3261.ckpt'
     # if cfg.seed == 2:
     #     path = '/home/kevin/neural-state-variables-v4/scripts/logs_double_pendulum_encoder-decoder-64_2/lightning_logs/last_checkpoints/epoch=999-val_loss=107.0373.ckpt'
     # if cfg.seed == 3:
@@ -85,6 +85,7 @@ def main():
         max_epochs=cfg.epochs,
         deterministic=True,
         strategy='ddp',
+        # strategy='ddp_find_unused_parameters_true',
         default_root_dir=log_dir,
         log_every_n_steps=10,
         val_check_interval=1.0,

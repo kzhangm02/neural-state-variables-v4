@@ -188,13 +188,14 @@ class EncoderDecoder64x1x1(torch.nn.Module):
             rx = self.decoder(z).view(x.size())
             return rx, z, mu, logvar
         else:
-            distributions = self.encoder(x)
-            mu = distributions[:, :64]
-            logvar = distributions[:, 64:]
-            z = reparametrize(mu, logvar)
+            # distributions = self.encoder(x)
+            # mu = distributions[:, :64]
+            # logvar = distributions[:, 64:]
+            # z = reparametrize(mu, logvar)
+            # z = mu
             rx = self.decoder(reconstructed_latent).view(x.size())
-            return rx, z, mu, logvar
-
+            return rx
+            # return rx, z, mu, logvar
 
 class SirenLayer(nn.Module):
     def __init__(self, in_f, out_f, w0=30, is_first=False, is_last=False):
@@ -205,6 +206,7 @@ class SirenLayer(nn.Module):
         self.is_first = is_first
         self.is_last = is_last
         self.init_weights()
+        self.relu = torch.nn.ReLU()
     
     def init_weights(self):
         b = 1 / self.in_f if self.is_first else np.sqrt(6 / self.in_f) / self.w0
@@ -213,17 +215,17 @@ class SirenLayer(nn.Module):
 
     def forward(self, x):
         x = self.linear(x)
-        return x if self.is_last else torch.sin(self.w0 * x)
+        # return x if self.is_last else torch.sin(self.w0 * x)
+        return x if self.is_last else self.relu(x)
     
 
 class EncoderDecoderDynamicsNetwork(torch.nn.Module):
     def __init__(self, in_channels):
         super(EncoderDecoderDynamicsNetwork,self).__init__()
-
-        self.layer1 = SirenLayer(in_channels, 128, is_first=True)
-        self.layer2 = SirenLayer(128, 256)
-        self.layer3 = SirenLayer(256, 128)
-        self.layer4 = SirenLayer(128, in_channels, is_last=True)
+        self.layer1 = ffn_bn(in_channels, 128)
+        self.layer2 = ffn_bn(128, 256)
+        self.layer3 = ffn_bn(256, 128)
+        self.layer4 = ffn_bn(128, in_channels)
     
     def forward(self, x):
         x = self.layer1(x)

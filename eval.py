@@ -70,12 +70,14 @@ def main():
     
     def load_checkpoint(filepath, model):
         checkpoint_filepath = glob.glob(os.path.join(filepath, '*.ckpt'))[0]
+        print(checkpoint_filepath)
         ckpt = torch.load(checkpoint_filepath)
         ckpt = rename_ckpt_for_multi_models(ckpt)
         model.load_state_dict(ckpt)
     
     def load_dynamics_checkpoint(filepath, model):
         checkpoint_filepath = glob.glob(os.path.join(filepath, '*.ckpt'))[0]
+        print(checkpoint_filepath)
         ckpt = torch.load(checkpoint_filepath)
         ckpt = rename_ckpt_for_dynamics_models(ckpt)
         model.load_state_dict(ckpt)
@@ -303,7 +305,7 @@ def gather_latent_from_trained_refine_model():
         seed=cfg.seed,
         object_name=cfg.dataset
     )
-    val_dataset =   NeuralPhysDataset(
+    val_dataset = NeuralPhysDataset(
         data_filepath=cfg.data_filepath,
         num_frames=cfg.num_frames,
         flag='val',
@@ -317,7 +319,7 @@ def gather_latent_from_trained_refine_model():
         shuffle=False,
         **kwargs
     )
-    val_loader =   torch.utils.data.DataLoader(
+    val_loader = torch.utils.data.DataLoader(
         dataset=val_dataset,
         batch_size=cfg.gather_val_batch,
         shuffle=False,
@@ -396,7 +398,7 @@ def eval_sr_model():
     cfg = load_config(filepath=config_filepath)
     pprint.pprint(cfg)
     cfg = munchify(cfg)
-    log_dir_name = '_'.join([cfg.dataset, cfg.model_name, str(cfg.seed)])
+    log_dir_name = '_'.join([cfg.dataset, cfg.model_name.replace('sr', '64'), str(cfg.seed)])
     log_dir = os.path.join(cfg.log_dir, log_dir_name)
 
     model_filepath = str(sys.argv[2])
@@ -424,9 +426,14 @@ def eval_sr_model():
         # states = states[ids, :cfg.num_frames-1]
         # states = np.reshape(states, (-1, cfg.intrinsic_dimension))
         states_raw = np.load(states_dir)
-        states = np.concatenate([states_raw[ids, :cfg.num_frames-1, :1], states_raw[ids, 1:, :1]], axis=2)
+        states = np.concatenate([states_raw[ids, :cfg.num_frames-1, 0::2], states_raw[ids, 1:, 0::2]], axis=2)
         states = np.reshape(states, (-1, cfg.intrinsic_dimension))
         latent = np.load(os.path.join(latent_dir, 'refine_latent.npy'))
+
+        latent = np.reshape(latent, (-1, cfg.num_frames-1, latent.shape[-1]))
+        latent = (latent - np.mean(latent, axis=1, keepdims=True)) / (np.max(latent, axis=1, keepdims=True) - np.min(latent, axis=1, keepdims=True) + 1e-12)
+        latent = np.reshape(latent, (-1, latent.shape[-1]))
+
         return (states, latent)
     
     eval_fit('train')

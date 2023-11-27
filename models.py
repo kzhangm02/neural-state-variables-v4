@@ -87,6 +87,9 @@ class VisDynamicsModel(pl.LightningModule):
         if self.hparams.model_name == 'encoder-decoder-64':
             self.model = EncoderDecoder64x1x1(in_channels=3)
             self.dynamics_model = EncoderDecoderDynamicsNetwork(in_channels=64)
+            # for name, param in self.model.named_parameters():
+            #     param.requires_grad = False
+            # self.model.eval()
         if self.hparams.model_name == 'refine-64':
             self.high_dim_model = EncoderDecoder64x1x1(in_channels=3)
             load_checkpoint(self.hparams.high_dim_ckpt_dir, self.high_dim_model)
@@ -117,6 +120,7 @@ class VisDynamicsModel(pl.LightningModule):
         logvar
     ):
         B, F = target.shape[0], target.shape[1]
+        # print(target.shape, next_output.shape)
         output = torch.reshape(output, target.shape)
         next_output = torch.reshape(next_output, target.shape)
         latent = torch.reshape(latent, (B, F, 64))
@@ -126,7 +130,8 @@ class VisDynamicsModel(pl.LightningModule):
 
         mse_loss = torch.nn.MSELoss(reduction='sum')
         rec_loss = mse_loss(output, target) / (B*F) + mse_loss(next_output[:, :-1], target[:, 1:]) / (B*(F-1))
-        nll_loss = logvar[:, :-1] + (next_latent[:, 1:] - mu[:, :-1]) ** 2 / logvar[:, :-1].exp()
+        # rec_loss = mse_loss(output, target) / (B*F)
+        nll_loss = logvar[:, 1:] + (next_latent[:, :-1] - mu[:, 1:]) ** 2 / logvar[:, 1:].exp()
         kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / (B*F)
         latent_rec_loss = torch.sum(nll_loss) / (2*B*(F-1))
         reg_loss = self.smoothness_loss(mu)
@@ -168,12 +173,15 @@ class VisDynamicsModel(pl.LightningModule):
 
         mse_loss = torch.nn.MSELoss(reduction='sum')
         rec_loss = mse_loss(output, target) / (B*F) + mse_loss(next_output[:, :-1], target[:, 1:]) / (B*(F-1))
-        latent_rec_loss = mse_loss(latent_latent[1:], next_latent_latent[:-1]) / (B*(F-1))
-        nll_loss = logvar + (reconstructed_latent - mu) ** 2 / logvar.exp()
-        latent64_rec_loss = torch.sum(nll_loss) / (2*B*F)
-        next_nll_loss = logvar[:, :-1] + (reconstructed_latent[:, 1:] - mu[:, :-1]) ** 2 / logvar[:, :-1].exp()
-        latent64_rec_loss += torch.sum(next_nll_loss) / (2*B*(F-1))
-        reg_loss = self.smoothness_loss(latent_latent)
+        latent_rec_loss = 0.0
+        latent64_rec_loss = 0.0
+        reg_loss = 0.0
+        # latent_rec_loss = mse_loss(latent_latent[1:], next_latent_latent[:-1]) / (B*(F-1))
+        # nll_loss = logvar + (reconstructed_latent - mu) ** 2 / logvar.exp()
+        # latent64_rec_loss = torch.sum(nll_loss) / (2*B*F)
+        # next_nll_loss = logvar[:, :-1] + (reconstructed_latent[:, 1:] - mu[:, :-1]) ** 2 / logvar[:, :-1].exp()
+        # latent64_rec_loss += torch.sum(next_nll_loss) / (2*B*(F-1))
+        # reg_loss = self.smoothness_loss(latent_latent)
 
         return (
             (
@@ -207,8 +215,10 @@ class VisDynamicsModel(pl.LightningModule):
         if self.hparams.model_name == 'encoder-decoder-64':
             data = torch.reshape(data, (-1, *data.shape[-3:]))
             output, latent, mu, logvar = self.model(data, None)
+            # self.model.eval()
             next_latent = self.dynamics_model(mu)
             next_output = self.model.decoder(next_latent)
+            # self.model.train()
 
             losses = self.encoder_decoder64_loss(target, output, next_output, latent, next_latent, mu, logvar)
             train_loss, train_rec_loss, train_reg_loss, train_latent_rec_loss, train_kl_loss = losses
@@ -218,7 +228,7 @@ class VisDynamicsModel(pl.LightningModule):
             self.log('train/latent_rec_loss', train_latent_rec_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
             self.log('train/kl_loss', train_kl_loss, on_step=True, on_epoch=True, prog_bar=True, logger=True, batch_size=self.hparams.train_batch, sync_dist=True)
             self.global_iter += 1
-
+            
         elif self.hparams.model_name == 'refine-64':
             self.high_dim_model.eval()
             mu, logvar = data[:, :, :, 0], data[:, :, :, 1] 
@@ -244,6 +254,8 @@ class VisDynamicsModel(pl.LightningModule):
         if self.hparams.model_name == 'encoder-decoder-64':
             data = torch.reshape(data, (-1, *data.shape[-3:]))
             output, latent, mu, logvar = self.model(data, None)
+            # next_latent = None
+            # next_output = None
             next_latent = self.dynamics_model(mu)
             next_output = self.model.decoder(next_latent)
 
